@@ -1,83 +1,64 @@
-from fpdf import FPDF
+import tkinter as tk
+from tkinter import ttk, messagebox
 import sqlite3
 import os
-import webbrowser
+from datetime import datetime
 
+DB_PATH = os.path.join(os.path.dirname(__file__), "samtronic.db")
 
-class InvoiceGenerator:
-    def __init__(self, repair_id):
-        self.repair_id = repair_id
-        self.conn = sqlite3.connect("samtronic.db")
-        self.cursor = self.conn.cursor()
-        self.generate_invoice()
+def fetch_invoices():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT customers.first_name || ' ' || customers.last_name AS name,
+               repairs.description,
+               repairs.price,
+               repairs.date
+        FROM repairs
+        JOIN customers ON customers.id = repairs.customer_id
+        ORDER BY repairs.date DESC
+        LIMIT 20
+    """)
+    rows = c.fetchall()
+    conn.close()
+    return rows
 
-    def generate_invoice(self):
-        self.cursor.execute(
-            """
-            SELECT r.id, c.name, c.phone, r.device, r.problem, r.status, r.cost, r.note, r.warranty
-            FROM repairs r
-            JOIN customers c ON r.customer_id = c.id
-            WHERE r.id = ?
-        """,
-            (self.repair_id,),
-        )
-        r = self.cursor.fetchone()
-        if not r:
+def run():
+    win = tk.Toplevel()
+    win.title("صدور فاکتور")
+    win.geometry("650x450")
+
+    title = ttk.Label(win, text="فاکتورهای اخیر", font=("Tahoma", 16))
+    title.pack(pady=10)
+
+    columns = ("name", "description", "price", "date")
+    tree = ttk.Treeview(win, columns=columns, show="headings", height=15)
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=140)
+    tree.pack(padx=10, pady=10)
+
+    def print_invoice():
+        selected = tree.selection()
+        if not selected:
+            messagebox.showwarning("خطا", "لطفاً یک ردیف را انتخاب کنید.")
             return
 
-        self.cursor.execute(
-            """
-            SELECT i.name, rp.quantity_used, i.sell_price
-            FROM repair_parts rp
-            JOIN inventory i ON rp.part_id = i.id
-            WHERE rp.repair_id = ?
-        """,
-            (self.repair_id,),
-        )
-        parts = self.cursor.fetchall()
+        values = tree.item(selected[0], "values")
+        output = f"""********* سامترونیک *********
+مشتری: {values[0]}
+توضیح: {values[1]}
+قیمت: {values[2]} تومان
+تاریخ: {values[3]}
 
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.add_font("IRANSans", "", "fonts/IRANSans.ttf", uni=True)
-        pdf.set_font("IRANSans", size=14)
+با تشکر از اعتماد شما.
+------------------------------"""
+        messagebox.showinfo("چاپ فاکتور", output)
 
-        if os.path.exists("static/samtronic_logo.png"):
-            pdf.image("static/samtronic_logo.png", x=10, y=8, w=30)
+    ttk.Button(win, text="نمایش فاکتور انتخاب‌شده", command=print_invoice).pack(pady=10)
 
-        pdf.cell(200, 10, txt="فاکتور رسمی تعمیرات", ln=True, align="C")
-        pdf.ln(10)
-        pdf.set_font("IRANSans", size=12)
+    rows = fetch_invoices()
+    for row in rows:
+        tree.insert("", "end", values=row)
 
-        labels = [
-            f"شماره فاکتور: {r[0]}",
-            f"مشتری: {r[1]} - {r[2]}",
-            f"دستگاه: {r[3]}",
-            f"مشکل گزارش‌شده: {r[4]}",
-            f"وضعیت تعمیر: {r[5]}",
-            f"هزینه کل: {r[6]} تومان",
-            f"توضیحات فنی: {r[7]}",
-            f"گارانتی: {r[8]}",
-        ]
-        for line in labels:
-            pdf.cell(0, 10, txt=line, ln=True, align="R")
-
-        pdf.ln(5)
-        pdf.cell(0, 10, txt="🔩 قطعات مصرفی:", ln=True, align="R")
-        total_parts = 0
-        for name, qty, price in parts:
-            subtotal = int(price or 0) * qty
-            total_parts += subtotal
-            pdf.cell(
-                0, 10, txt=f"{name} × {qty} = {subtotal} تومان", ln=True, align="R"
-            )
-
-        pdf.ln(5)
-        pdf.cell(0, 10, txt=f"جمع کل قطعات: {total_parts} تومان", ln=True, align="R")
-
-        filename = f"invoice_{r[0]}.pdf"
-        pdf.output(filename)
-
-        try:
-            webbrowser.open_new(filename)
-        except:
-            pass
+    win.mainloop()

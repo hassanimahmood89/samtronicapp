@@ -1,59 +1,54 @@
-from fpdf import FPDF
+import tkinter as tk
+from tkinter import ttk, messagebox
 import sqlite3
 import os
-import datetime
 
-class ReportGenerator:
-    def __init__(self):
-        self.conn = sqlite3.connect("samtronic.db")
-        self.cursor = self.conn.cursor()
+DB_PATH = os.path.join(os.path.dirname(__file__), "samtronic.db")
 
-    def generate(self):
-        self.generate_repairs_report()
-        self.generate_inventory_report()
+def search_by_name(name, tree):
+    if not name:
+        messagebox.showwarning("ورودی ناقص", "لطفاً نام یا نام خانوادگی را وارد کنید.")
+        return
 
-    def generate_repairs_report(self):
-        self.cursor.execute("""
-            SELECT r.id, c.name, r.device, r.problem, r.status, r.cost
-            FROM repairs r
-            JOIN customers c ON r.customer_id = c.id
-        """)
-        repairs = self.cursor.fetchall()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT customers.first_name || ' ' || customers.last_name AS full_name,
+               repairs.description,
+               repairs.price,
+               repairs.date
+        FROM repairs
+        JOIN customers ON customers.id = repairs.customer_id
+        WHERE customers.first_name LIKE ? OR customers.last_name LIKE ?
+        ORDER BY repairs.date DESC
+    """, (f"%{name}%", f"%{name}%"))
+    results = c.fetchall()
+    conn.close()
 
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.add_font("IRANSans", "", "fonts/IRANSans.ttf", uni=True)
-        pdf.set_font("IRANSans", size=12)
+    tree.delete(*tree.get_children())
+    for row in results:
+        tree.insert("", "end", values=row)
 
-        if os.path.exists("static/samtronic_logo.png"):
-            pdf.image("static/samtronic_logo.png", x=10, y=8, w=30)
+def run():
+    win = tk.Toplevel()
+    win.title("گزارش‌گیری")
+    win.geometry("700x450")
 
-        pdf.cell(200, 10, txt="📋 گزارش تعمیرات", ln=True, align="C")
-        pdf.ln(10)
+    frame = ttk.Frame(win, padding=10)
+    frame.pack(fill="both", expand=True)
 
-        for r in repairs:
-            pdf.cell(0, 10, txt=f"#{r[0]} | مشتری: {r[1]} | دستگاه: {r[2]} | مشکل: {r[3]} | وضعیت: {r[4]} | هزینه: {r[5]} تومان", ln=True, align="R")
+    ttk.Label(frame, text="جستجو بر اساس نام مشتری:").grid(row=0, column=0, sticky="w")
+    name_entry = ttk.Entry(frame, width=30)
+    name_entry.grid(row=0, column=1, padx=5)
 
-        filename = f"report_repairs_{datetime.date.today()}.pdf"
-        pdf.output(filename)
+    columns = ("نام مشتری", "شرح", "قیمت", "تاریخ")
+    tree = ttk.Treeview(frame, columns=columns, show="headings")
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=150)
+    tree.grid(row=2, column=0, columnspan=2, pady=10)
 
-    def generate_inventory_report(self):
-        self.cursor.execute("SELECT name, quantity, buy_price, sell_price FROM inventory")
-        parts = self.cursor.fetchall()
+    search_btn = ttk.Button(frame, text="جستجو", command=lambda: search_by_name(name_entry.get(), tree))
+    search_btn.grid(row=1, column=0, columnspan=2, pady=5)
 
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.add_font("IRANSans", "", "fonts/IRANSans.ttf", uni=True)
-        pdf.set_font("IRANSans", size=12)
-
-        if os.path.exists("static/samtronic_logo.png"):
-            pdf.image("static/samtronic_logo.png", x=10, y=8, w=30)
-
-        pdf.cell(200, 10, txt="📦 گزارش موجودی انبار", ln=True, align="C")
-        pdf.ln(10)
-
-        for p in parts:
-            pdf.cell(0, 10, txt=f"{p[0]} | موجودی: {p[1]} | خرید: {p[2]} | فروش: {p[3]}", ln=True, align="R")
-
-        filename = f"report_inventory_{datetime.date.today()}.pdf"
-        pdf.output(filename)
+    win.mainloop()

@@ -1,202 +1,112 @@
-from PyQt5 import QtWidgets
+import tkinter as tk
+from tkinter import ttk, messagebox
 import sqlite3
+import os
 
+DB_PATH = os.path.join(os.path.dirname(__file__), "samtronic.db")
 
-class RepairManager(QtWidgets.QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("ثبت تعمیرات")
-        self.setGeometry(300, 200, 950, 600)
-        self.layout = QtWidgets.QVBoxLayout()
-        self.setLayout(self.layout)
-
-        form = QtWidgets.QFormLayout()
-        self.customer_combo = QtWidgets.QComboBox()
-        self.device_input = QtWidgets.QLineEdit()
-        self.problem_input = QtWidgets.QLineEdit()
-        self.status_combo = QtWidgets.QComboBox()
-        self.status_combo.addItems(
-            ["در انتظار قطعه", "در حال تعمیر", "آماده تحویل", "تحویل‌شده"]
+def create_tables():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS repairs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER,
+            description TEXT,
+            price INTEGER,
+            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
         )
-        self.cost_input = QtWidgets.QLineEdit()
-        self.note_input = QtWidgets.QLineEdit()
-        self.warranty_input = QtWidgets.QLineEdit()
+    """)
+    conn.commit()
+    conn.close()
 
-        self.part_combo = QtWidgets.QComboBox()
-        self.quantity_input = QtWidgets.QSpinBox()
-        self.quantity_input.setMaximum(1000)
-        add_part_btn = QtWidgets.QPushButton("➕ افزودن قطعه")
-        add_part_btn.clicked.connect(self.add_part_to_list)
+def fetch_customers():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, first_name, last_name FROM customers")
+    customers = c.fetchall()
+    conn.close()
+    return customers
 
-        form.addRow("مشتری:", self.customer_combo)
-        form.addRow("دستگاه:", self.device_input)
-        form.addRow("مشکل:", self.problem_input)
-        form.addRow("وضعیت:", self.status_combo)
-        form.addRow("هزینه:", self.cost_input)
-        form.addRow("یادداشت:", self.note_input)
-        form.addRow("گارانتی:", self.warranty_input)
-        form.addRow("قطعه:", self.part_combo)
-        form.addRow("تعداد:", self.quantity_input)
-        form.addRow("", add_part_btn)
-        self.layout.addLayout(form)
+def save_repair(customer_id, description, price, tree):
+    if not customer_id or not description or not price:
+        messagebox.showwarning("خطا", "لطفاً تمام فیلدها را پر کنید.")
+        return
 
-        self.parts_table = QtWidgets.QTableWidget()
-        self.parts_table.setColumnCount(3)
-        self.parts_table.setHorizontalHeaderLabels(["نام قطعه", "ID", "تعداد"])
-        self.layout.addWidget(self.parts_table)
+    try:
+        price = int(price)
+    except ValueError:
+        messagebox.showerror("خطا", "قیمت باید عدد باشد.")
+        return
 
-        self.save_btn = QtWidgets.QPushButton("💾 ثبت تعمیر")
-        self.save_btn.clicked.connect(self.save_repair)
-        self.layout.addWidget(self.save_btn)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO repairs (customer_id, description, price) VALUES (?, ?, ?)",
+              (customer_id, description, price))
+    conn.commit()
+    conn.close()
 
-        search_layout = QtWidgets.QHBoxLayout()
-        self.search_input = QtWidgets.QLineEdit()
-        self.search_input.setPlaceholderText("🔍 جستجو...")
-        self.search_input.textChanged.connect(self.load_repairs)
-        search_layout.addWidget(self.search_input)
-        self.layout.addLayout(search_layout)
+    messagebox.showinfo("ثبت شد", "تعمیر با موفقیت ذخیره شد.")
+    show_repairs(tree)
 
-        self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels(
-            ["ID", "مشتری", "دستگاه", "مشکل", "هزینه", "قطعات", "وضعیت"]
-        )
-        self.table.cellDoubleClicked.connect(self.generate_invoice)
-        self.layout.addWidget(self.table)
+def show_repairs(tree):
+    for row in tree.get_children():
+        tree.delete(row)
 
-        self.parts_used = []
-        self.load_customers()
-        self.load_parts()
-        self.load_repairs()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT repairs.id, customers.first_name || ' ' || customers.last_name, repairs.description, repairs.price, repairs.date
+        FROM repairs
+        JOIN customers ON repairs.customer_id = customers.id
+        ORDER BY repairs.date DESC
+    """)
+    rows = c.fetchall()
+    conn.close()
 
-    def load_customers(self):
-        conn = sqlite3.connect("samtronic.db")
-        c = conn.cursor()
-        c.execute("SELECT id, name FROM customers")
-        self.customer_combo.clear()
-        for customer in c.fetchall():
-            self.customer_combo.addItem(customer[1], customer[0])
-        conn.close()
+    for row in rows:
+        tree.insert("", "end", values=row)
 
-    def load_parts(self):
-        conn = sqlite3.connect("samtronic.db")
-        c = conn.cursor()
-        c.execute("SELECT id, name, quantity FROM inventory")
-        self.parts = c.fetchall()
-        self.part_combo.clear()
-        for part in self.parts:
-            alert = "⚠️" if part[2] < 5 else ""
-            self.part_combo.addItem(f"{part[1]} ({part[2]}) {alert}", part[0])
-        conn.close()
+def run():
+    create_tables()
 
-    def add_part_to_list(self):
-        part_id = self.part_combo.currentData()
-        quantity = self.quantity_input.value()
-        if quantity <= 0:
-            QtWidgets.QMessageBox.warning(self, "خطا", "تعداد باید بیشتر از صفر باشد.")
-            return
-        for part in self.parts:
-            if part[0] == part_id:
-                if quantity > part[2]:
-                    QtWidgets.QMessageBox.warning(
-                        self, "موجودی ناکافی", f"تنها {part[2]} عدد موجود است."
-                    )
-                    return
-                self.parts_used.append((part_id, part[1], quantity))
-                break
-        self.refresh_parts_table()
+    win = tk.Toplevel()
+    win.title("ثبت تعمیرات")
+    win.geometry("700x450")
 
-    def refresh_parts_table(self):
-        self.parts_table.setRowCount(0)
-        for i, (part_id, name, qty) in enumerate(self.parts_used):
-            self.parts_table.insertRow(i)
-            self.parts_table.setItem(i, 0, QtWidgets.QTableWidgetItem(name))
-            self.parts_table.setItem(i, 1, QtWidgets.QTableWidgetItem(str(part_id)))
-            self.parts_table.setItem(i, 2, QtWidgets.QTableWidgetItem(str(qty)))
+    frame = ttk.Frame(win, padding=10)
+    frame.pack(fill="both", expand=True)
 
-    def save_repair(self):
-        customer_id = self.customer_combo.currentData()
-        device = self.device_input.text()
-        problem = self.problem_input.text()
-        status = self.status_combo.currentText()
-        cost = self.cost_input.text()
-        note = self.note_input.text()
-        warranty = self.warranty_input.text()
+    # مشتری‌ها
+    ttk.Label(frame, text="مشتری:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+    customer_combo = ttk.Combobox(frame, width=30)
+    customer_data = fetch_customers()
+    customer_combo["values"] = [f"{id} - {name} {lname}" for id, name, lname in customer_data]
+    customer_combo.grid(row=0, column=1, padx=5, pady=5)
 
-        if not self.parts_used:
-            QtWidgets.QMessageBox.warning(self, "خطا", "هیچ قطعه‌ای انتخاب نشده.")
-            return
+    # توضیح
+    ttk.Label(frame, text="شرح تعمیر:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+    desc_entry = ttk.Entry(frame, width=40)
+    desc_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        conn = sqlite3.connect("samtronic.db")
-        c = conn.cursor()
-        c.execute(
-            """INSERT INTO repairs (customer_id, device, problem, status, cost, note, warranty)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (customer_id, device, problem, status, cost, note, warranty),
-        )
-        repair_id = c.lastrowid
+    # قیمت
+    ttk.Label(frame, text="قیمت (تومان):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+    price_entry = ttk.Entry(frame, width=20)
+    price_entry.grid(row=2, column=1, padx=5, pady=5, sticky="w")
 
-        for part_id, _, qty in self.parts_used:
-            c.execute(
-                "INSERT INTO repair_parts (repair_id, part_id, quantity_used) VALUES (?, ?, ?)",
-                (repair_id, part_id, qty),
-            )
-            c.execute(
-                "UPDATE inventory SET quantity = quantity - ? WHERE id = ?",
-                (qty, part_id),
-            )
+    # دکمه ثبت
+    ttk.Button(frame, text="ثبت تعمیر", command=lambda: save_repair(
+        int(customer_combo.get().split(" - ")[0]), desc_entry.get(), price_entry.get(), tree)
+    ).grid(row=3, column=0, columnspan=2, pady=10)
 
-        conn.commit()
-        conn.close()
-        self.device_input.clear()
-        self.problem_input.clear()
-        self.cost_input.clear()
-        self.note_input.clear()
-        self.warranty_input.clear()
-        self.parts_used.clear()
-        self.refresh_parts_table()
-        self.load_parts()
-        self.load_repairs()
+    # جدول نمایش تعمیرات
+    columns = ("id", "customer", "description", "price", "date")
+    tree = ttk.Treeview(frame, columns=columns, show="headings")
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=120)
+    tree.grid(row=4, column=0, columnspan=2, pady=10)
 
-    def load_repairs(self):
-        keyword = self.search_input.text().lower()
-        self.table.setRowCount(0)
-        conn = sqlite3.connect("samtronic.db")
-        c = conn.cursor()
-        c.execute(
-            """SELECT r.id, c.name, r.device, r.problem, r.cost, r.status
-                     FROM repairs r
-                     JOIN customers c ON r.customer_id = c.id"""
-        )
-        all_repairs = c.fetchall()
-
-        for row in all_repairs:
-            if keyword in " ".join(str(cell).lower() for cell in row):
-                repair_id = row[0]
-                c.execute(
-                    """SELECT i.name, rp.quantity_used FROM repair_parts rp
-                             JOIN inventory i ON rp.part_id = i.id
-                             WHERE rp.repair_id = ?""",
-                    (repair_id,),
-                )
-                parts = c.fetchall()
-                parts_str = ", ".join([f"{name}×{qty}" for name, qty in parts])
-
-                row_idx = self.table.rowCount()
-                self.table.insertRow(row_idx)
-                for col, val in enumerate(row):
-                    self.table.setItem(
-                        row_idx, col, QtWidgets.QTableWidgetItem(str(val))
-                    )
-                self.table.setItem(row_idx, 5, QtWidgets.QTableWidgetItem(parts_str))
-                self.table.setItem(row_idx, 6, QtWidgets.QTableWidgetItem(row[5]))
-        conn.close()
-
-    def generate_invoice(self, row, column):
-        repair_id = int(self.table.item(row, 0).text())
-        from invoice import InvoiceGenerator
-
-        InvoiceGenerator(repair_id)
-        QtWidgets.QMessageBox.information(
-            self, "فاکتور", f"فاکتور تعمیر {repair_id} صادر شد."
-        )
+    show_repairs(tree)
+    win.mainloop()

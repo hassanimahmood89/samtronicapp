@@ -1,82 +1,73 @@
-from PyQt5 import QtWidgets, QtGui, QtCore
-from database import init_db
-from customers import CustomerManager
-from repairs import RepairManager
-from inventory import InventoryManager
-from report import ReportGenerator
-from login import LoginWindow
-import sys
+import tkinter as tk
+from tkinter import ttk, messagebox
 import os
+import sys
+
+# مسیر فونت سفارشی (اگر استفاده می‌کنی)
+FONT_PATH = os.path.join(os.path.dirname(sys.argv[0]), "fonts", "IRANSans.ttf")
 
 
-class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("مدیریت تعمیرگاه Samtronic")
-        self.setGeometry(200, 200, 900, 600)
-        self.setWindowIcon(QtGui.QIcon("static/samtronic_logo.png"))
+# تابع‌هایی برای هر بخش
+def open_customers():
+    try:
+        import customers
 
-        font_path = os.path.join("fonts", "IRANSans.ttf")
-        if os.path.exists(font_path):
-            font_id = QtGui.QFontDatabase.addApplicationFont(font_path)
-            family = QtGui.QFontDatabase.applicationFontFamilies(font_id)[0]
-            font = QtGui.QFont(family, 10)
-            self.setFont(font)
-
-        self.setup_ui()
-
-    def setup_ui(self):
-        central_widget = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout()
-
-        title = QtWidgets.QLabel("سامانه مدیریت تعمیرگاه Samtronic")
-        title.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(title)
-
-        customer_btn = QtWidgets.QPushButton("مدیریت مشتری‌ها")
-        customer_btn.clicked.connect(self.open_customer_window)
-        layout.addWidget(customer_btn)
-
-        repair_btn = QtWidgets.QPushButton("ثبت تعمیرات")
-        repair_btn.clicked.connect(self.open_repair_window)
-        layout.addWidget(repair_btn)
-
-        inventory_btn = QtWidgets.QPushButton("مدیریت انبار")
-        inventory_btn.clicked.connect(self.open_inventory_window)
-        layout.addWidget(inventory_btn)
-
-        report_btn = QtWidgets.QPushButton("📊 گزارش‌گیری")
-        report_btn.clicked.connect(self.generate_report)
-        layout.addWidget(report_btn)
-
-        central_widget.setLayout(layout)
-        self.setCentralWidget(central_widget)
-
-    def open_customer_window(self):
-        self.customer_window = CustomerManager()
-        self.customer_window.show()
-
-    def open_repair_window(self):
-        self.repair_window = RepairManager()
-        self.repair_window.show()
-
-    def open_inventory_window(self):
-        self.inventory_window = InventoryManager()
-        self.inventory_window.show()
-
-    def generate_report(self):
-        ReportGenerator().generate()
+        customers.run()
+    except Exception as e:
+        messagebox.showerror("خطا", f"خطا در اجرای بخش مشتریان:\n{e}")
 
 
-iif __name__ == "__main__":
-    init_db()
-    app = QtWidgets.QApplication(sys.argv)
+def open_repairs():
+    try:
+        import repairs
 
-    def launch_main():
-        window = MainWindow()
-        window.show()
+        repairs.run()
+    except Exception as e:
+        messagebox.showerror("خطا", f"خطا در اجرای بخش تعمیرات:\n{e}")
 
-    login = LoginWindow(launch_main)
-    login.show()
 
-    sys.exit(app.exec_())
+def open_invoice():
+    try:
+        import invoice
+
+        invoice.run()
+    except Exception as e:
+        messagebox.showerror("خطا", f"خطا در اجرای بخش فاکتور:\n{e}")
+
+
+def exit_app():
+    app.destroy()
+
+
+# ساخت پنجره اصلی
+app = tk.Tk()
+app.title("سامترونیک - سیستم مدیریت تعمیرگاه")
+app.geometry("600x400")
+app.resizable(False, False)
+
+style = ttk.Style()
+style.theme_use("clam")
+
+# عنوان اصلی
+title = ttk.Label(app, text="سامترونیک", font=("Tahoma", 20, "bold"))
+title.pack(pady=30)
+
+# دکمه‌ها
+button_frame = ttk.Frame(app)
+button_frame.pack(pady=20)
+
+ttk.Button(button_frame, text="ثبت مشتری", command=open_customers, width=20).grid(
+    row=0, column=0, padx=10, pady=10
+)
+ttk.Button(button_frame, text="ثبت تعمیر", command=open_repairs, width=20).grid(
+    row=0, column=1, padx=10, pady=10
+)
+ttk.Button(button_frame, text="فاکتور", command=open_invoice, width=20).grid(
+    row=1, column=0, padx=10, pady=10
+)
+ttk.Button(button_frame, text="خروج", command=exit_app, width=20).grid(
+    row=1, column=1, padx=10, pady=10
+)
+
+# اجرا
+app.mainloop()

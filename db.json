@@ -1,0 +1,19 @@
+{
+  "customers": [
+    {
+      "id": 1,
+      "first_name": "علی",
+      "last_name": "موسوی",
+      "phone": "09123456789"
+    }
+  ],
+  "repairs": [
+    {
+      "id": 1,
+      "customer_id": 1,
+      "description": "تعویض باتری",
+      "price": 400000,
+      "date": "2024-07-01"
+    }
+  ]
+}

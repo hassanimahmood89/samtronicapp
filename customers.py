@@ -1,64 +1,65 @@
-from PyQt5 import QtWidgets, QtCore
+import tkinter as tk
+from tkinter import ttk, messagebox
 import sqlite3
+import os
 
-class CustomerManager(QtWidgets.QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("مدیریت مشتری‌ها")
-        self.setGeometry(250, 150, 700, 500)
-        self.layout = QtWidgets.QVBoxLayout()
-        self.setLayout(self.layout)
+DB_PATH = os.path.join(os.path.dirname(__file__), "samtronic.db")
 
-        self.form = QtWidgets.QFormLayout()
-        self.name_input = QtWidgets.QLineEdit()
-        self.phone_input = QtWidgets.QLineEdit()
-        self.email_input = QtWidgets.QLineEdit()
-        self.address_input = QtWidgets.QLineEdit()
+def create_table():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name TEXT,
+            last_name TEXT,
+            phone TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-        self.form.addRow("نام:", self.name_input)
-        self.form.addRow("تلفن:", self.phone_input)
-        self.form.addRow("ایمیل:", self.email_input)
-        self.form.addRow("آدرس:", self.address_input)
+def save_customer(first_name, last_name, phone, tree):
+    if not first_name or not last_name or not phone:
+        messagebox.showwarning("خطا", "لطفاً تمام فیلدها را وارد کنید.")
+        return
 
-        self.layout.addLayout(self.form)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO customers (first_name, last_name, phone) VALUES (?, ?, ?)",
+              (first_name, last_name, phone))
+    conn.commit()
+    conn.close()
 
-        self.add_button = QtWidgets.QPushButton("افزودن مشتری")
-        self.add_button.clicked.connect(self.add_customer)
-        self.layout.addWidget(self.add_button)
+    messagebox.showinfo("ثبت شد", "مشتری با موفقیت ثبت شد.")
+    show_customers(tree)
 
-        self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["کد", "نام", "تلفن", "ایمیل", "آدرس"])
-        self.layout.addWidget(self.table)
+def show_customers(tree):
+    for row in tree.get_children():
+        tree.delete(row)
 
-        self.load_customers()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM customers")
+    rows = c.fetchall()
+    conn.close()
 
-    def add_customer(self):
-        name = self.name_input.text()
-        phone = self.phone_input.text()
-        email = self.email_input.text()
-        address = self.address_input.text()
+    for row in rows:
+        tree.insert("", "end", values=row)
 
-        conn = sqlite3.connect("samtronic.db")
-        c = conn.cursor()
-        c.execute("INSERT INTO customers (name, phone, email, address) VALUES (?, ?, ?, ?)",
-                  (name, phone, email, address))
-        conn.commit()
-        conn.close()
+def run():
+    create_table()
 
-        self.name_input.clear()
-        self.phone_input.clear()
-        self.email_input.clear()
-        self.address_input.clear()
-        self.load_customers()
+    win = tk.Toplevel()
+    win.title("ثبت مشتری")
+    win.geometry("550x400")
 
-    def load_customers(self):
-        self.table.setRowCount(0)
-        conn = sqlite3.connect("samtronic.db")
-        c = conn.cursor()
-        c.execute("SELECT id, name, phone, email, address FROM customers")
-        for row_index, row_data in enumerate(c.fetchall()):
-            self.table.insertRow(row_index)
-            for column, data in enumerate(row_data):
-                self.table.setItem(row_index, column, QtWidgets.QTableWidgetItem(str(data)))
-        conn.close()
+    frame = ttk.Frame(win, padding=10)
+    frame.pack(fill="both", expand=True)
+
+    ttk.Label(frame, text="نام:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+    first_name_entry = ttk.Entry(frame)
+    first_name_entry.grid(row=0, column=1, padx=5, pady=5)
+
+    ttk.Label(frame, text="نام خانوادگی:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+    last_name_entry = ttk.Entry
