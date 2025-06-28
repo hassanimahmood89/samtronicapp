@@ -4,6 +4,7 @@ from customers import CustomerManager
 from repairs import RepairManager
 from inventory import InventoryManager
 from report import ReportGenerator
+from login import LoginWindow
 import sys
 import os
 
@@ -67,9 +68,15 @@ class MainWindow(QtWidgets.QMainWindow):
         ReportGenerator().generate()
 
 
-if __name__ == "__main__":
+iif __name__ == "__main__":
     init_db()
     app = QtWidgets.QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+
+    def launch_main():
+        window = MainWindow()
+        window.show()
+
+    login = LoginWindow(launch_main)
+    login.show()
+
     sys.exit(app.exec_())
